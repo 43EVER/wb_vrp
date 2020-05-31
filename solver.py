@@ -8,51 +8,48 @@ import sys
 import json5
 
 def create_data_model(raw_data):
-    data = {}
     # km
-    _locations = [
-        (4, 4),  # depot
-        (8, 0),  # locations to visit
-        (2, 0),
-    ]
-    # 转换成 m
-    data['locations'] = [(l[0] * 1000, l[1] * 1000) for l in _locations]
-    data['num_locations'] = len(data['locations'])
+    # _locations = [
+    #     (4, 4),  # depot
+    #     (8, 0),  # locations to visit
+    #     (2, 0),
+    # ]
+    # # 转换成 m
+    # data['locations'] = [(l[0] * 1000, l[1] * 1000) for l in _locations]
+    raw_data['num_locations'] = len(raw_data['locations'])
     
     # 吨
-    _demands = [0, # depot
-           1, 1] # 1, 2
+    # _demands = [0, # depot
+    #        1, 1] # 1, 2
     
-    # 千克
-    data['demands'] = [l * 1000 for l in _demands]
+    # # 千克
+    # data['demands'] = [l * 1000 for l in _demands]
 
     # 车的数量及最大载重
     _capacity = [3000]
-    data['vehicle_capacity'] = [l * 1000 for l in _capacity]
-    data['num_vehicles'] = len(data['vehicle_capacity'])
+    raw_data['vehicle_capacity'] = [l * 1000 for l in raw_data['vehicle_capacity']]
+    raw_data['num_vehicles'] = len(raw_data['vehicle_capacity'])
 
     # 每个配送点下货所需时间（分钟）
-    data['time_per_location'] = 5
+    # data['time_per_location'] = 5
 
     # 每个配送点的时间窗口（分钟）
-    data['time_windows'] = \
-          [(0, 0), # depot
-           (0, 10000), (0, 8500)]
+    # data['time_windows'] = \
+    #       [(0, 0), # depot
+    #        (0, 10000), (0, 8500)]
 
     # 速度（m/min）
-    data['vehicle_speed'] = 10 * 60 / 3.6
+    # data['vehicle_speed'] = 10 * 60 / 3.6
     
-    data['depot'] = 0
+    raw_data['depot'] = 0
     
     # 最大里程（m）
-    data['max_dis_per_vehicle'] = 35 * 1000;
+    # data['max_dis_per_vehicle'] = 35 * 1000;
 
     # 最大工作时间
-    data['max_time_per_vehicle'] = 8 * 60
+    raw_data['max_time_per_vehicle'] = 8 * 60
 
-    print(data)
-
-    return data
+    return raw_data
 
 
 # 计算两点曼哈顿距离
@@ -180,7 +177,9 @@ def add_time_window_constraints(routing, manager, data, time_evaluator):
 
 def print_solution(data, manager, routing, assignment):  # pylint:disable=too-many-locals
     """Prints assignment on console"""
-    print('Objective: {}'.format(assignment.ObjectiveValue()))
+    result = {}
+    # print('Objective: {}'.format(assignment.ObjectiveValue()))
+
     total_distance = 0
     total_load = 0
     total_time = 0
@@ -191,11 +190,22 @@ def print_solution(data, manager, routing, assignment):  # pylint:disable=too-ma
         index = manager.NodeToIndex(order)
         if assignment.Value(routing.NextVar(index)) == index:
             dropped.append(order)
-    print('dropped orders: {}'.format(dropped))
+    # print('dropped orders: {}'.format(dropped))
+
+    result['dropped'] = dropped
+    
+    routes = []
+    result['routes'] = routes
 
     for vehicle_id in xrange(data['num_vehicles']):
         index = routing.Start(vehicle_id)
         plan_output = 'Route for vehicle {}:\n'.format(vehicle_id)
+        
+        route = {}
+        route['vehicle_idx'] = vehicle_id
+        sub_route = []
+        route['sub_route'] = sub_route
+
         distance = 0
         while not routing.IsEnd(index):
             load_var = capacity_dimension.CumulVar(index)
@@ -204,6 +214,13 @@ def print_solution(data, manager, routing, assignment):  # pylint:disable=too-ma
                 manager.IndexToNode(index),
                 assignment.Value(load_var),
                 assignment.Min(time_var), assignment.Max(time_var))
+            
+            # 地点，装货，出发时间
+            sub_route.append({
+                'from': manager.IndexToNode(index), 
+                'time_window': [assignment.Min(time_var), assignment.Max(time_var)]
+            })        
+
             previous_index = index
             index = assignment.Value(routing.NextVar(index))
             distance += routing.GetArcCostForVehicle(previous_index, index,
@@ -214,18 +231,38 @@ def print_solution(data, manager, routing, assignment):  # pylint:disable=too-ma
             manager.IndexToNode(index),
             assignment.Value(load_var),
             assignment.Min(time_var), assignment.Max(time_var))
+        
+        sub_route.append({
+                'from': manager.IndexToNode(index), 
+                'time_window': [assignment.Min(time_var), assignment.Max(time_var)]
+            })
+        
         plan_output += 'Distance of the route: {}m\n'.format(distance)
         plan_output += 'Load of the route: {}\n'.format(
             assignment.Value(load_var))
         plan_output += 'Time of the route: {}min\n'.format(
             assignment.Value(time_var))
-        print(plan_output)
+        # print(plan_output)
         total_distance += distance
         total_load += assignment.Value(load_var)
         total_time += assignment.Value(time_var)
-    print('Total Distance of all routes: {}m'.format(total_distance))
-    print('Total Load of all routes: {}'.format(total_load))
-    print('Total Time of all routes: {}min'.format(total_time))
+
+        route['route_dis'] = distance
+        route['route_load'] = assignment.Value(load_var)
+
+        if len(route['sub_route']) > 2:
+            routes.append(route)
+        
+
+    # print('Total Distance of all routes: {}m'.format(total_distance))
+    # print('Total Load of all routes: {}'.format(total_load))
+    # print('Total Time of all routes: {}min'.format(total_time))
+
+    result['total_distance'] = total_distance
+    result['total_load'] = total_load
+    result['total_time'] = total_time
+
+    print(result)
 
 
 def main(raw_data):
@@ -257,9 +294,11 @@ def main(raw_data):
     assignment = routing.SolveWithParameters(search_parameters)
     if assignment:
         print_solution(data, manager, routing, assignment)
+    else:
+        print("error")
     
 if __name__ == '__main__':
     data = sys.argv[1]
     data = json5.loads(data)
-    print(data)
-    # main()
+    # print(data)
+    main(data)

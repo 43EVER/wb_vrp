@@ -1,7 +1,8 @@
 <template>
     <div>
-      <div id="visualmap" style="width: 40wh;height:40vh;">
+      <div id="visualmap" style="width: 100wh;height:50vh;">
         {{userData}}
+        {{solverData}}
       </div>
     </div>
 </template>
@@ -24,6 +25,7 @@ export default {
 
 
     myChart.setOption({
+      backgroundColor: '#E0F7FA',
       series: [
         {
           name: 'visual-map',
@@ -56,10 +58,10 @@ export default {
   },
 
   methods: {
-    updateVisualMap(userData) {
+    updateVisualMapNodes(userData) {
       if (!userData || !userData.locations || !myChart) return;
 
-      let new_nodes = this.transformUserDataToVisualData(userData.locations)
+      let new_nodes = this.transformUserDataToVisualDataNodes(userData.locations)
       data.nodes = new_nodes
       myChart.setOption({
         series: [
@@ -73,7 +75,25 @@ export default {
       console.log("update data")
       console.log(data.nodes)
     },
-    transformUserDataToVisualData(locations) {
+    
+    updateVisualMapLinks(solverData) {
+      if (!solverData || solverData === 'error' || !myChart) return;
+      console.log('solverdata from visual map');
+      console.log(solverData)
+      let new_links = this.transformUserDataToVisualDataLinks(solverData.routes)
+      data.links = new_links;
+      myChart.setOption({
+        series: [
+          {
+            name: 'visual-map',
+            nodes: data.nodes,
+            links: data.links
+          }
+        ]
+      })
+    },
+    
+    transformUserDataToVisualDataNodes(locations) {
       let new_nodes = []
       locations.forEach((value, idx) => {
         new_nodes.push({
@@ -87,13 +107,44 @@ export default {
         color: '#000'
       };
       return new_nodes
+    },
+
+    transformUserDataToVisualDataLinks(routes) {
+      let color = [
+        '#F57F17',
+        '#388E3C',
+        '#827717',
+        '#6200EA',
+        '#5C6BC0',
+        '#64B5F6'
+      ]
+      let new_links = []
+      routes.forEach((value, idx) => {
+        let c = color[idx % color.length]
+        let sub_route = value.sub_route;
+        for (let idx = 1; idx < sub_route.length; idx++) {
+          new_links.push({
+            'source': String(sub_route[idx - 1].from),
+            'target': String(sub_route[idx].from),
+            'lineStyle': {
+              'color': c
+            }
+          })
+        }
+      });
+
+      return new_links
     }
   },
 
   computed: {
     userData() {
-      this.updateVisualMap(this.$store.getters.getUserInputData)
+      this.updateVisualMapNodes(this.$store.getters.getUserInputData)
       return this.$store.getters.getUserInputData
+    },
+    solverData() {
+      this.updateVisualMapLinks(this.$store.getters.getSolverOutputData)
+      return this.$store.getters.getSolverOutputData
     }
   },
 
